@@ -1,0 +1,35 @@
+[[redirects]]
+  from = "/api-get-documents"
+  to = "http://documind.onrender.com/api-get-documents"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api-upload-file"
+  to = "http://documind.onrender.com/api-upload-file"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api-ask-from-collection"
+  to = "http://documind.onrender.com/api-ask-from-collection"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api-delete-document"
+  to = "http://documind.onrender.com/api-delete-document"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api-create-folder"
+  to = "http://documind.onrender.com/api-create-folder"
+  status = 200
+  force = true
+
+[[redirects]]
+  from = "/api-get-folders"
+  to = "http://documind.onrender.com/api-get-folders"
+  status = 200
+  force = true
