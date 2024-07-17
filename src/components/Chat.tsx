@@ -14,8 +14,11 @@ import {
   Popover,
   Modal,
   Center,
+  Accordion,
+  Avatar,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
+import classes from '../styles/Accordion.module.css';
 
 interface ChatProps {
   folderId: string | null;
@@ -24,7 +27,7 @@ interface ChatProps {
 interface Message {
   role: string;
   content: string;
-  references?: string;
+  references?: Array<any>;
   pdfUrl?: string;
 }
 
@@ -46,24 +49,26 @@ const Chat = ({ folderId }: ChatProps) => {
       console.log(folderId);
       const formData = new FormData();
       formData.append('secretkey', import.meta.env.VITE_CHATPDF_KEY);
-      formData.append('question', input);
+      formData.append('question', input + '. Responde en español');
       formData.append('folder_id', folderId as string);
 
+      console.log(formData);
       try {
         const response = await axios.post('/api-ask-from-collection', formData);
 
         const { answer, documents } = response.data.data;
-        const bestMatch = documents.reduce((prev: any, current: any) =>
-          prev.score > current.score ? prev : current
-        );
-        const documentReference = `${bestMatch.paragraph}`;
+        // const bestMatch = documents.reduce((prev: any, current: any) =>
+        //   prev.score > current.score ? prev : current
+        // );
+        // const documentReference = `${bestMatch.paragraph}`;
+        console.log(documents);
         const botMessageContent = `${answer}`;
 
         const botMessage = {
           role: 'bot',
           content: botMessageContent,
-          references: documentReference,
-          pdfUrl: `${bestMatch.file_url}#page=${bestMatch.page + 1}`,
+          references: documents,
+          // pdfUrl: `${bestMatch.file_url}#page=${bestMatch.page + 1}`,
         };
         setMessages((prevMessages) => [...prevMessages, botMessage]);
         setLoading(false);
@@ -81,7 +86,7 @@ const Chat = ({ folderId }: ChatProps) => {
   };
 
   return (
-    <Box style={{ display: 'flex', flexDirection: 'column', height: '490px', maxHeight: '490px' }}>
+    <Box style={{ display: 'flex', flexDirection: 'column', height: '490px', maxHeight: '460px' }}>
       <ScrollArea
         style={{
           flex: 1,
@@ -99,12 +104,50 @@ const Chat = ({ folderId }: ChatProps) => {
             p="sm"
             style={{ textAlign: msg.role === 'user' ? 'right' : 'left' }}
           >
-            <Text>{msg.content}</Text>
-
-            {msg.role === 'bot' && msg.references && msg.pdfUrl && (
-              <Button variant="link" color="gray" size="xs" onClick={open}>
-                Ver documento
-              </Button>
+            <div
+              style={{
+                display: 'flex',
+                flexDirection: msg.role === 'user' ? 'row-reverse' : 'row',
+                alignItems: 'center',
+                gap: '8px',
+              }}
+            >
+              <Avatar
+                radius="xl"
+                src={msg.role === 'user' ? undefined : '/src/public/LOGOS_GEN.iality_web-15.svg'}
+              />
+              <Text>{msg.content}</Text>
+            </div>
+            {msg.role === 'bot' && msg.references && (
+              <div>
+                <Text size="sm" my="sm">
+                  Referencias:
+                </Text>
+                {msg.references.map(
+                  (reference: any) =>
+                    reference.paragraph !== '' && (
+                      <Accordion classNames={classes}>
+                        <Accordion.Item value={reference.file} key={reference.id}>
+                          <Accordion.Control>
+                            {reference.file} - Pagina: {reference.page}
+                          </Accordion.Control>
+                          <Accordion.Panel>
+                            <Text size="xs">{reference.paragraph}</Text>
+                            <div style={{ textAlign: 'center' }}>
+                              <Button
+                                variant="light"
+                                onClick={() => openPdf(reference.file_url || '')}
+                                mt="sm"
+                              >
+                                Ver documento
+                              </Button>
+                            </div>
+                          </Accordion.Panel>
+                        </Accordion.Item>
+                      </Accordion>
+                    )
+                )}
+              </div>
             )}
             <Modal opened={openedModalReference} onClose={close} title="Referencias" size="xl">
               <Center>

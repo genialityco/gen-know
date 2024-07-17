@@ -20,49 +20,16 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
   const [showModalDemo, setShowModalDemo] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
 
-  const whatsappNumber = "3106875756";
+  const whatsappNumber = '3106875756';
   const whatsappLink = `https://wa.me/57${whatsappNumber}?text=Hola,%20quiero%20obtener%20acceso%20completo%20a%20Gen%20Know`;
 
   const handleShowModalDemo = () => {
     setShowModalDemo(!showModalDemo);
   };
 
-  const handleDrop = (files: File[]) => {
+  const handleDrop = async (files: File[]) => {
     setFiles(files);
     setStatus('idle');
-  };
-
-  const handleReject = (files: FileRejection[]) => {
-    setFiles([]);
-    setStatus('error');
-  };
-
-  const handleCreateFolder = async () => {
-    const folderName = generateUniqueFolderName();
-    const folderResponse = await axios.post('/api-create-folder', {
-      folder_name: folderName,
-      secretkey: import.meta.env.VITE_CHATPDF_KEY,
-    });
-    const folder = folderResponse.data.data.folder_id;
-
-    const folderRef = doc(db, 'folders', folder);
-    await setDoc(folderRef, {
-      folder_id: folder,
-      user_id: user?.uid,
-      folder_name: folderName,
-    });
-
-    setFolderId(folder);
-    return folder;
-  };
-
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-
-    if (files.length === 0) {
-      setStatus('error');
-      return;
-    }
 
     if (numberDocuments >= 5) {
       setShowModalDemo(true);
@@ -99,6 +66,7 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
           onUpload(uploadResponse.data);
         }
         setStatus('success');
+        handleClear();
       } else {
         throw new Error('Failed to create or retrieve folder');
       }
@@ -107,8 +75,86 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
       console.error(error);
     } finally {
       setLoading(false);
+      setFiles([]);
     }
   };
+  const handleReject = (files: FileRejection[]) => {
+    setFiles([]);
+    setStatus('error');
+  };
+
+  const handleCreateFolder = async () => {
+    const folderName = generateUniqueFolderName();
+    const folderResponse = await axios.post('/api-create-folder', {
+      folder_name: folderName,
+      secretkey: import.meta.env.VITE_CHATPDF_KEY,
+    });
+    const folder = folderResponse.data.data.folder_id;
+
+    const folderRef = doc(db, 'folders', folder);
+    await setDoc(folderRef, {
+      folder_id: folder,
+      user_id: user?.uid,
+      folder_name: folderName,
+    });
+
+    setFolderId(folder);
+    return folder;
+  };
+
+  // const handleSubmit = async (event: React.FormEvent) => {
+  //   event.preventDefault();
+
+  //   if (files.length === 0) {
+  //     setStatus('error');
+  //     return;
+  //   }
+
+  //   if (numberDocuments >= 5) {
+  //     setShowModalDemo(true);
+  //     return;
+  //   }
+
+  //   setLoading(true);
+  //   setStatus('loading');
+
+  //   try {
+  //     if (!folderId) {
+  //       await handleCreateFolder();
+  //     }
+  //     if (folderId) {
+  //       for (const file of files) {
+  //         const formData = new FormData();
+  //         formData.append('file', file);
+  //         formData.append('secretkey', import.meta.env.VITE_CHATPDF_KEY);
+  //         formData.append('folder_id', folderId);
+
+  //         const uploadResponse = await axios.post('/api-upload-file', formData, {
+  //           headers: {
+  //             'Content-Type': 'multipart/form-data',
+  //           },
+  //         });
+
+  //         const fileRef = doc(db, 'folders', folderId, 'files', uploadResponse.data.documentId);
+  //         await setDoc(fileRef, {
+  //           file_id: uploadResponse.data.documentId,
+  //           file_name: uploadResponse.data.fileName,
+  //           file_url: uploadResponse.data.file_url,
+  //         });
+
+  //         onUpload(uploadResponse.data);
+  //       }
+  //       setStatus('success');
+  //     } else {
+  //       throw new Error('Failed to create or retrieve folder');
+  //     }
+  //   } catch (error) {
+  //     setStatus('error');
+  //     console.error(error);
+  //   } finally {
+  //     setLoading(false);
+  //   }
+  // };
 
   const handleClear = () => {
     setFiles([]);
@@ -124,7 +170,6 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
         alignItems: 'center',
       }}
     >
-      <form onSubmit={handleSubmit}>
         <Dropzone
           onReject={handleReject}
           accept={[MIME_TYPES.pdf]}
@@ -165,14 +210,14 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
                   </Text>
                 </div>
               ) : (
-                <Text size="md" inline>
-                  Arrastra los documentos aquí
+                <Text size="md" inline style={{textAlign: 'center'}}>
+                  Haz clic o arrastra los documentos aquí
                 </Text>
               )}
             </div>
           </Group>
         </Dropzone>
-        <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
+        {/* <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
           <Button type="submit" disabled={loading}>
             Cargar
           </Button>
@@ -180,7 +225,7 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
             Limpiar
           </Button>
         </div>
-      </form>
+      </form> */}
       <Modal
         opened={showModalDemo}
         onClose={handleShowModalDemo}
@@ -195,7 +240,7 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
           },
         }}
       >
-        <Group  align="center">
+        <Group align="center">
           <IconAlertCircle size={50} color="var(--mantine-color-yellow-7)" />
           <Text size="xl" fw={900} variant="gradient" gradient={{ from: 'pink', to: 'yellow' }}>
             Estás en modo demostración
@@ -217,12 +262,7 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
           >
             Contactar a ventas
           </Button>
-          <Button
-            variant="default"
-            fullWidth
-            onClick={handleShowModalDemo}
-            mt="md"
-          >
+          <Button variant="default" fullWidth onClick={handleShowModalDemo} mt="md">
             Cerrar
           </Button>
         </Group>

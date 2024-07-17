@@ -106,29 +106,16 @@ export const LandingChat = () => {
   }, [user]);
 
   return (
-    <Container>
+    <Container fluid>
       {user === null && <LoginAnonymously />}
       <Grid>
-        <Grid.Col span={8}>
-          <Card
-            shadow="sm"
-            padding="lg"
-            radius="md"
-            withBorder
-            style={{ height: '550px', maxHeight: '550px' }}
-          >
-            <Text size="xl" mb="lg">
-              Chat
-            </Text>
-            <Chat folderId={folderId} />
-          </Card>
-        </Grid.Col>
-        <Grid.Col span={4}>
+      <Grid.Col span={{ base: 12, sm: 12, md: 4 }}>
           <Card shadow="sm" padding="lg" radius="md" withBorder>
             <Text size="xl" mb="lg">
               Lista de PDFs
             </Text>
             <PDFUploader onUpload={getDocuments} numberDocuments={numberDocuments} />
+            <Text mt="md">Documentos Cargados:</Text>
             {isLoadingGetDocuments ? (
               <Group mt="lg">
                 <Loader />
@@ -162,6 +149,20 @@ export const LandingChat = () => {
                 {documents.length === 0 && <Text>No hay documentos cargados</Text>}
               </List>
             )}
+          </Card>
+        </Grid.Col>
+        <Grid.Col span={{ base: 12, sm: 12, md: 8 }}>
+          <Card
+            shadow="sm"
+            padding="lg"
+            radius="md"
+            withBorder
+            style={{ height: '550px', maxHeight: '550px' }}
+          >
+            <Text size="xl" mb="lg">
+              Chat
+            </Text>
+            <Chat folderId={folderId} />
           </Card>
         </Grid.Col>
       </Grid>

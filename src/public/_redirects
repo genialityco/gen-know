@@ -1,9 +1,1 @@
 /*    /index.html   200
-
-/api-get-documents    http://documind.onrender.com/api-get-documents    200
-/api-upload-file      http://documind.onrender.com/api-upload-file      200
-/api-ask-from-collection    http://documind.onrender.com/api-ask-from-collection    200
-/api-delete-document  http://documind.onrender.com/api-delete-document  200
-/api-create-folder    http://documind.onrender.com/api-create-folder    200
-/api-get-folders      http://documind.onrender.com/api-get-folders      200
-
