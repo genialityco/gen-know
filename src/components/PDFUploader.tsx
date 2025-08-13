@@ -1,5 +1,6 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState } from 'react';
-import { Dropzone, MIME_TYPES, FileRejection } from '@mantine/dropzone';
+import { Dropzone, FileRejection } from '@mantine/dropzone';
 import { Button, Text, Loader, Group, rem, Modal } from '@mantine/core';
 import axios from 'axios';
 import { IconPdf, IconX, IconCheck, IconAlertCircle, IconBrandWhatsapp } from '@tabler/icons-react';
@@ -7,32 +8,39 @@ import { useAuth } from '@/context/AuthContext';
 import { db, doc, setDoc } from '@/config/firebaseConfig';
 
 interface PDFUploaderProps {
-  onUpload: (value: Function) => void;
+  onUpload: (value: any) => void; // si prefieres, tipa el shape de la respuesta de /load-docs
   numberDocuments: number;
 }
 
-const generateUniqueFolderName = () => `folder_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+const RAG_URL = import.meta.env.VITE_RAG_URL as string;
 
 const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
-  const { user, folderId, setFolderId } = useAuth();
+  const { user, folderId } = useAuth();
   const [files, setFiles] = useState<File[]>([]);
   const [loading, setLoading] = useState(false);
   const [showModalDemo, setShowModalDemo] = useState(false);
   const [status, setStatus] = useState<'idle' | 'loading' | 'error' | 'success'>('idle');
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
   const whatsappNumber = '3106875756';
   const whatsappLink = `https://wa.me/57${whatsappNumber}?text=Hola,%20quiero%20obtener%20acceso%20completo%20a%20Gen%20Know`;
 
-  const handleShowModalDemo = () => {
-    setShowModalDemo(!showModalDemo);
-  };
+  const handleShowModalDemo = () => setShowModalDemo((v) => !v);
 
-  const handleDrop = async (files: File[]) => {
-    setFiles(files);
+  const handleDrop = async (incomingFiles: File[]) => {
+    setFiles(incomingFiles);
     setStatus('idle');
+    setErrorMsg(null);
 
+    // Límite demo (tu lógica existente)
     if (numberDocuments >= 5) {
       setShowModalDemo(true);
+      return;
+    }
+
+    if (!RAG_URL) {
+      setStatus('error');
+      setErrorMsg('RAG_URL no está configurada. Define VITE_RAG_URL en tu .env.');
       return;
     }
 
@@ -40,125 +48,58 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
     setStatus('loading');
 
     try {
-      if (!folderId) {
-        await handleCreateFolder();
+      // Enviar todos los archivos en un único FormData (campo "files")
+      const formData = new FormData();
+      for (const f of incomingFiles) formData.append('files', f);
+
+      const { data } = await axios.post(`${RAG_URL}/load-docs`, formData, {
+        headers: { 'Content-Type': 'multipart/form-data' },
+      });
+      // data esperado: { status: "ok", uploaded_ids: ["a.pdf", ...] } o { error: "..."}
+      if (data?.error) {
+        throw new Error(data.error);
       }
-      if (folderId) {
-        for (const file of files) {
-          const formData = new FormData();
-          formData.append('file', file);
-          formData.append('secretkey', import.meta.env.VITE_CHATPDF_KEY);
-          formData.append('folder_id', folderId);
 
-          const uploadResponse = await axios.post('/api-upload-file', formData, {
-            headers: {
-              'Content-Type': 'multipart/form-data',
-            },
-          });
-
-          const fileRef = doc(db, 'folders', folderId, 'files', uploadResponse.data.documentId);
+      // Registro opcional en Firestore si ya manejas "folders"
+      if (folderId && Array.isArray(data?.uploaded_ids)) {
+        for (const id of data.uploaded_ids) {
+          const fileRef = doc(db, 'folders', folderId, 'files', id);
           await setDoc(fileRef, {
-            file_id: uploadResponse.data.documentId,
-            file_name: uploadResponse.data.fileName,
-            file_url: uploadResponse.data.file_url,
+            file_id: id,
+            file_name: id,
+            file_url: null, // si luego generas URL pública, actualízala aquí
+            user_id: user?.uid ?? null,
+            created_at: new Date().toISOString(),
           });
-
-          onUpload(uploadResponse.data);
         }
-        setStatus('success');
-        handleClear();
-      } else {
-        throw new Error('Failed to create or retrieve folder');
       }
-    } catch (error) {
+
+      onUpload(data);
+      setStatus('success');
+      handleClear();
+    } catch (err: any) {
+      console.error(err);
       setStatus('error');
-      console.error(error);
+      setErrorMsg(err?.message || 'Ocurrió un error al subir los documentos.');
     } finally {
       setLoading(false);
       setFiles([]);
     }
   };
-  const handleReject = (files: FileRejection[]) => {
+
+  const handleReject = (rejections: FileRejection[]) => {
     setFiles([]);
     setStatus('error');
+    setErrorMsg(
+      rejections?.[0]?.errors?.[0]?.message ||
+        'Archivo(s) rechazado(s). Verifica el tipo o tamaño permitido.'
+    );
   };
-
-  const handleCreateFolder = async () => {
-    const folderName = generateUniqueFolderName();
-    const folderResponse = await axios.post('/api-create-folder', {
-      folder_name: folderName,
-      secretkey: import.meta.env.VITE_CHATPDF_KEY,
-    });
-    const folder = folderResponse.data.data.folder_id;
-
-    const folderRef = doc(db, 'folders', folder);
-    await setDoc(folderRef, {
-      folder_id: folder,
-      user_id: user?.uid,
-      folder_name: folderName,
-    });
-
-    setFolderId(folder);
-    return folder;
-  };
-
-  // const handleSubmit = async (event: React.FormEvent) => {
-  //   event.preventDefault();
-
-  //   if (files.length === 0) {
-  //     setStatus('error');
-  //     return;
-  //   }
-
-  //   if (numberDocuments >= 5) {
-  //     setShowModalDemo(true);
-  //     return;
-  //   }
-
-  //   setLoading(true);
-  //   setStatus('loading');
-
-  //   try {
-  //     if (!folderId) {
-  //       await handleCreateFolder();
-  //     }
-  //     if (folderId) {
-  //       for (const file of files) {
-  //         const formData = new FormData();
-  //         formData.append('file', file);
-  //         formData.append('secretkey', import.meta.env.VITE_CHATPDF_KEY);
-  //         formData.append('folder_id', folderId);
-
-  //         const uploadResponse = await axios.post('/api-upload-file', formData, {
-  //           headers: {
-  //             'Content-Type': 'multipart/form-data',
-  //           },
-  //         });
-
-  //         const fileRef = doc(db, 'folders', folderId, 'files', uploadResponse.data.documentId);
-  //         await setDoc(fileRef, {
-  //           file_id: uploadResponse.data.documentId,
-  //           file_name: uploadResponse.data.fileName,
-  //           file_url: uploadResponse.data.file_url,
-  //         });
-
-  //         onUpload(uploadResponse.data);
-  //       }
-  //       setStatus('success');
-  //     } else {
-  //       throw new Error('Failed to create or retrieve folder');
-  //     }
-  //   } catch (error) {
-  //     setStatus('error');
-  //     console.error(error);
-  //   } finally {
-  //     setLoading(false);
-  //   }
-  // };
 
   const handleClear = () => {
     setFiles([]);
     setStatus('idle');
+    setErrorMsg(null);
   };
 
   return (
@@ -170,62 +111,66 @@ const PDFUploader = ({ onUpload, numberDocuments }: PDFUploaderProps) => {
         alignItems: 'center',
       }}
     >
-        <Dropzone
-          onReject={handleReject}
-          accept={[MIME_TYPES.pdf]}
-          onDrop={handleDrop}
-          style={{ maxWidth: '250px' }}
-          multiple
-        >
-          <Group justify="center" gap="xs" mih={80} style={{ pointerEvents: 'none' }}>
-            {status === 'idle' && (
-              <Dropzone.Idle>
-                <IconPdf
-                  style={{ width: rem(30), height: rem(30), color: 'var(--mantine-color-dimmed)' }}
-                  stroke={1.5}
-                />
-              </Dropzone.Idle>
-            )}
-            {status === 'loading' && <Loader style={{ width: rem(30), height: rem(30) }} />}
-            {status === 'success' && (
-              <IconCheck
-                style={{ width: rem(30), height: rem(30), color: 'var(--mantine-color-green-6)' }}
+      <Dropzone
+        onReject={handleReject}
+        onDrop={handleDrop}
+        multiple
+        disabled={loading}
+        // Acepta PDF, DOCX y TXT (tipos MIME explícitos para mejor compatibilidad)
+        accept={[
+          'application/pdf',
+          'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          'text/plain',
+        ]}
+        style={{ maxWidth: '280px', width: '100%', cursor: loading ? 'not-allowed' : 'pointer' }}
+      >
+        <Group justify="center" gap="xs" mih={90} style={{ pointerEvents: 'none' }}>
+          {status === 'idle' && (
+            <Dropzone.Idle>
+              <IconPdf
+                style={{ width: rem(30), height: rem(30), color: 'var(--mantine-color-dimmed)' }}
                 stroke={1.5}
               />
-            )}
-            {status === 'error' && (
-              <IconX
-                style={{ width: rem(40), height: rem(40), color: 'var(--mantine-color-red-6)' }}
-                stroke={1.5}
-              />
-            )}
-            <div>
-              {files.length > 0 ? (
-                <div style={{ marginTop: '10px', textAlign: 'center' }}>
-                  <Text size="sm" style={{ display: 'flex', flexDirection: 'column' }}>
-                    Documentos seleccionados:
-                    {files.map((file) => (
-                      <span key={file.name}>{file.name}</span>
-                    ))}
-                  </Text>
-                </div>
-              ) : (
-                <Text size="md" inline style={{textAlign: 'center'}}>
-                  Haz clic o arrastra los documentos aquí
+            </Dropzone.Idle>
+          )}
+          {status === 'loading' && <Loader style={{ width: rem(30), height: rem(30) }} />}
+          {status === 'success' && (
+            <IconCheck
+              style={{ width: rem(30), height: rem(30), color: 'var(--mantine-color-green-6)' }}
+              stroke={1.5}
+            />
+          )}
+          {status === 'error' && (
+            <IconX
+              style={{ width: rem(40), height: rem(40), color: 'var(--mantine-color-red-6)' }}
+              stroke={1.5}
+            />
+          )}
+
+          <div>
+            {files.length > 0 ? (
+              <div style={{ marginTop: '10px', textAlign: 'center' }}>
+                <Text size="sm" style={{ display: 'flex', flexDirection: 'column' }}>
+                  Documentos seleccionados:
+                  {files.map((file) => (
+                    <span key={file.name}>{file.name}</span>
+                  ))}
                 </Text>
-              )}
-            </div>
-          </Group>
-        </Dropzone>
-        {/* <div style={{ marginTop: '10px', display: 'flex', justifyContent: 'space-between' }}>
-          <Button type="submit" disabled={loading}>
-            Cargar
-          </Button>
-          <Button variant="outline" color="red" onClick={handleClear}>
-            Limpiar
-          </Button>
-        </div>
-      </form> */}
+              </div>
+            ) : (
+              <Text size="sm" inline style={{ textAlign: 'center' }}>
+                Arrastra o haz clic para subir PDF, DOCX o TXT
+              </Text>
+            )}
+            {errorMsg && (
+              <Text size="xs" c="red" ta="center" mt={6} style={{ maxWidth: 260 }}>
+                {errorMsg}
+              </Text>
+            )}
+          </div>
+        </Group>
+      </Dropzone>
+
       <Modal
         opened={showModalDemo}
         onClose={handleShowModalDemo}

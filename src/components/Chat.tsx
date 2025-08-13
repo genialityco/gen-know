@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 import { useState } from 'react';
 import axios from 'axios';
 import {
@@ -10,72 +11,87 @@ import {
   Loader,
   Paper,
   Drawer,
-  HoverCard,
-  Popover,
-  Modal,
-  Center,
   Accordion,
   Avatar,
+  rem,
 } from '@mantine/core';
 import { useDisclosure } from '@mantine/hooks';
 import classes from '../styles/Accordion.module.css';
 
 interface ChatProps {
-  folderId: string | null;
+  folderId: string | null; // ya no se usa para RAG, lo dejo para compatibilidad con tu estado global
 }
 
+type RefWithMeta = {
+  id?: string;
+  file?: string;
+  page?: number;
+  paragraph?: string;
+  file_url?: string;
+  score?: number;
+};
+
 interface Message {
-  role: string;
+  role: 'user' | 'bot';
   content: string;
-  references?: Array<any>;
+  // Puede venir como strings (context chunks) o como objetos con metadatos si más adelante lo agregas:
+  references?: Array<string | RefWithMeta>;
   pdfUrl?: string;
 }
+
+type RagQueryResponse = {
+  context: string[]; // lo que devuelve tu /query actual
+  answer: string;
+};
+
+const RAG_URL = import.meta.env.VITE_RAG_URL as string;
 
 const Chat = ({ folderId }: ChatProps) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // Drawer para PDF (hoy no se usa porque el backend no entrega file_url; queda listo por si agregas metadatos)
   const [drawerOpened, setDrawerOpened] = useState(false);
   const [pdfUrl, setPdfUrl] = useState('');
-  const [pdfPage, setPdfPage] = useState(1);
-  const [openedModalReference, { open, close }] = useDisclosure(false);
+
+  const [openedModalReference, { close }] = useDisclosure(false); // modal no usado ahora
 
   const sendMessage = async () => {
-    if (input) {
-      const userMessage = { role: 'user', content: input };
-      setMessages((prevMessages) => [...prevMessages, userMessage]);
-      setInput('');
-      setLoading(true);
-      console.log(folderId);
-      const formData = new FormData();
-      formData.append('secretkey', import.meta.env.VITE_CHATPDF_KEY);
-      formData.append('question', input + '. Responde en español');
-      formData.append('folder_id', folderId as string);
+    const q = input.trim();
+    if (!q) return;
 
-      console.log(formData);
-      try {
-        const response = await axios.post('/api-ask-from-collection', formData);
+    const userMessage: Message = { role: 'user', content: q };
+    setMessages((prev) => [...prev, userMessage]);
+    setInput('');
+    setLoading(true);
 
-        const { answer, documents } = response.data.data;
-        // const bestMatch = documents.reduce((prev: any, current: any) =>
-        //   prev.score > current.score ? prev : current
-        // );
-        // const documentReference = `${bestMatch.paragraph}`;
-        console.log(documents);
-        const botMessageContent = `${answer}`;
+    try {
+      if (!RAG_URL) throw new Error('RAG_URL no está definida. Configura VITE_RAG_URL en tu .env');
 
-        const botMessage = {
-          role: 'bot',
-          content: botMessageContent,
-          references: documents,
-          // pdfUrl: `${bestMatch.file_url}#page=${bestMatch.page + 1}`,
-        };
-        setMessages((prevMessages) => [...prevMessages, botMessage]);
-        setLoading(false);
-      } catch (error: any) {
-        console.error('Error sending message:', error.message);
-        setLoading(false);
-      }
+      // Llamada a FastAPI RAG
+      const { data } = await axios.post<RagQueryResponse>(`${RAG_URL}/query`, {
+        query: `${q}. Responde en español`,
+        k: 3,
+      });
+
+      const botMessage: Message = {
+        role: 'bot',
+        content: data.answer ?? '',
+        references: Array.isArray(data.context) ? data.context : [],
+      };
+
+      setMessages((prev) => [...prev, botMessage]);
+    } catch (error: any) {
+      console.error('Error sending message:', error?.message || error);
+      const errMsg: Message = {
+        role: 'bot',
+        content:
+          'Ocurrió un error al procesar tu pregunta. Verifica la URL del servicio RAG o revisa la consola.',
+      };
+      setMessages((prev) => [...prev, errMsg]);
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -83,6 +99,54 @@ const Chat = ({ folderId }: ChatProps) => {
     setPdfUrl(url);
     close();
     setDrawerOpened(true);
+  };
+
+  // Render de referencias: soporta string (chunk de contexto) o objeto con metadatos (futuro)
+  const renderReferences = (refs: Array<string | RefWithMeta>) => {
+    if (!refs?.length) return null;
+
+    return (
+      <>
+        <Text size="sm" my="sm">
+          Referencias:
+        </Text>
+        <Accordion classNames={classes}>
+          {refs.map((ref, idx) => {
+            const isString = typeof ref === 'string';
+            const key = isString ? `ref-${idx}` : ref.id ?? `ref-${idx}`;
+            const title = isString
+              ? `Fragmento ${idx + 1}`
+              : `${ref.file ?? 'Documento'} ${ref.page != null ? `- Página: ${ref.page}` : ''}`;
+
+            const paragraph = isString ? (ref as string) : ref.paragraph || '';
+
+            return (
+              <Accordion.Item value={key} key={key}>
+                <Accordion.Control>{title}</Accordion.Control>
+                <Accordion.Panel>
+                  <Text size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+                    {paragraph || (isString ? ref : 'Sin texto disponible para este fragmento')}
+                  </Text>
+
+                  {/* Botón "Ver documento" sólo si hay file_url */}
+                  {!isString && (ref as RefWithMeta).file_url ? (
+                    <div style={{ textAlign: 'center' }}>
+                      <Button
+                        variant="light"
+                        onClick={() => openPdf((ref as RefWithMeta).file_url!)}
+                        mt="sm"
+                      >
+                        Ver documento
+                      </Button>
+                    </div>
+                  ) : null}
+                </Accordion.Panel>
+              </Accordion.Item>
+            );
+          })}
+        </Accordion>
+      </>
+    );
   };
 
   return (
@@ -114,53 +178,19 @@ const Chat = ({ folderId }: ChatProps) => {
             >
               <Avatar
                 radius="xl"
-                src={msg.role === 'user' ? undefined : '/src/public/LOGOS_GEN.iality_web-15.svg'}
+                // usa una ruta válida en tu proyecto; si no tienes logo, deja undefined
+                src={msg.role === 'user' ? undefined : '/LOGOS_GEN.iality_web-15.svg'}
+                style={{ width: rem(28), height: rem(28) }}
               />
-              <Text>{msg.content}</Text>
+              <Text style={{ whiteSpace: 'pre-wrap' }}>{msg.content}</Text>
             </div>
-            {msg.role === 'bot' && msg.references && (
-              <div>
-                <Text size="sm" my="sm">
-                  Referencias:
-                </Text>
-                {msg.references.map(
-                  (reference: any) =>
-                    reference.paragraph !== '' && (
-                      <Accordion classNames={classes}>
-                        <Accordion.Item value={reference.file} key={reference.id}>
-                          <Accordion.Control>
-                            {reference.file} - Pagina: {reference.page}
-                          </Accordion.Control>
-                          <Accordion.Panel>
-                            <Text size="xs">{reference.paragraph}</Text>
-                            <div style={{ textAlign: 'center' }}>
-                              <Button
-                                variant="light"
-                                onClick={() => openPdf(reference.file_url || '')}
-                                mt="sm"
-                              >
-                                Ver documento
-                              </Button>
-                            </div>
-                          </Accordion.Panel>
-                        </Accordion.Item>
-                      </Accordion>
-                    )
-                )}
-              </div>
-            )}
-            <Modal opened={openedModalReference} onClose={close} title="Referencias" size="xl">
-              <Center>
-                <Text size="xs">{msg.references}</Text>
-              </Center>
-              <Center mt="20">
-                <Button variant="link" onClick={() => openPdf(msg.pdfUrl || '')}>
-                  Ver documento
-                </Button>
-              </Center>
-            </Modal>
+
+            {msg.role === 'bot' && Array.isArray(msg.references) && msg.references.length > 0
+              ? renderReferences(msg.references)
+              : null}
           </Paper>
         ))}
+
         {loading && (
           <Group>
             <Loader size="sm" />
@@ -168,6 +198,7 @@ const Chat = ({ folderId }: ChatProps) => {
           </Group>
         )}
       </ScrollArea>
+
       <Group>
         <TextInput
           value={input}
@@ -176,8 +207,11 @@ const Chat = ({ folderId }: ChatProps) => {
           style={{ flex: 1 }}
           placeholder="Escribe tu mensaje..."
         />
-        <Button onClick={sendMessage}>Enviar</Button>
+        <Button onClick={sendMessage} disabled={loading}>
+          Enviar
+        </Button>
       </Group>
+
       <Drawer
         opened={drawerOpened}
         onClose={() => setDrawerOpened(false)}

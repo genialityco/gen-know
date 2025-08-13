@@ -1,6 +1,16 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, setDoc, serverTimestamp, collection, query, where, getDocs, deleteDoc } from 'firebase/firestore';
+import {
+  getFirestore,
+  doc,
+  setDoc,
+  serverTimestamp,
+  collection,
+  query,
+  where,
+  getDocs,
+  deleteDoc,
+} from 'firebase/firestore';
 import { getStorage, ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 
 const firebaseConfig = {
@@ -18,4 +28,19 @@ const auth = getAuth(app);
 const db = getFirestore(app);
 const storage = getStorage(app);
 
-export { auth, db, storage, doc, setDoc, serverTimestamp, collection, query, ref, uploadBytes, getDownloadURL, where, getDocs, deleteDoc };
+export {
+  auth,
+  db,
+  storage,
+  doc,
+  setDoc,
+  serverTimestamp,
+  collection,
+  query,
+  ref,
+  uploadBytes,
+  getDownloadURL,
+  where,
+  getDocs,
+  deleteDoc,
+};
